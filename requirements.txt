@@ -1,0 +1,8 @@
+boto3>=1.34
+botocore>=1.34
+requests>=2.31
+python-dotenv>=1.0
+
+# dev / test / local-demo only
+pytest>=8.0
+moto[dynamodb,sns,events,secretsmanager]>=5.0

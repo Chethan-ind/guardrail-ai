@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GuardRail — Live Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0F1319;
+    --panel: #171C24;
+    --panel-2: #1B212B;
+    --line: #262D39;
+    --hi: #E7EBF0;
+    --lo: #8A93A5;
+    --faint: #5B6472;
+    --sev-low: #5B6472;
+    --sev-medium: #C9922F;
+    --sev-high: #D9782E;
+    --sev-critical: #C1483B;
+    --ok: #4E9C93;
+    --radius: 3px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--ink);
+    color: var(--hi);
+    font-family: 'Space Grotesk', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  a { color: inherit; }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #12171F 0%, #0F1319 100%);
+    flex-wrap: wrap;
+  }
+
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand-mark {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--ok);
+    box-shadow: 0 0 0 3px rgba(78,156,147,0.18);
+    flex: none;
+  }
+  .brand-name { font-weight: 700; font-size: 18px; letter-spacing: 0.01em; }
+  .brand-sub { color: var(--lo); font-size: 13px; }
+
+  .mode-pill {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--lo);
+    letter-spacing: 0.02em;
+  }
+  .mode-pill.demo { color: var(--sev-medium); border-color: rgba(201,146,47,0.35); }
+  .mode-pill.live { color: var(--ok); border-color: rgba(78,156,147,0.35); }
+
+  .spacer { flex: 1; }
+
+  .field {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 6px 10px;
+  }
+  .field input {
+    background: transparent; border: none; outline: none;
+    color: var(--hi); font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px; width: 240px;
+  }
+  .field input::placeholder { color: var(--faint); }
+  .field label { color: var(--faint); font-size: 11px; }
+
+  button {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 13px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--hi);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  button:hover { border-color: #3A4353; background: #1F2632; }
+  button.primary { background: var(--sev-medium); border-color: var(--sev-medium); color: #14100A; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.ghost { background: transparent; color: var(--lo); }
+
+  /* ---------- Canvas ---------- */
+  .canvas-wrap {
+    position: relative;
+    height: calc(100vh - 66px);
+    overflow: auto;
+    background-image:
+      radial-gradient(circle, #1C2330 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-position: 10px 10px;
+  }
+
+  .canvas {
+    position: relative;
+    width: 1400px;
+    height: 1000px;
+  }
+
+  .panel {
+    position: absolute;
+    width: 420px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panel.dragging {
+    box-shadow: 0 18px 40px rgba(0,0,0,0.45);
+    transform: scale(1.008);
+    z-index: 50;
+    transition: none;
+  }
+  .panel:not(.dragging) { transition: box-shadow 0.2s ease, transform 0.2s ease; }
+
+  .panel-top { height: 3px; }
+  .panel-top.amber { background: var(--sev-medium); }
+  .panel-top.teal { background: var(--ok); }
+  .panel-top.slate { background: var(--faint); }
+
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    cursor: grab;
+    user-select: none;
+    background: linear-gradient(180deg, #1A2029 0%, #171C24 100%);
+  }
+  .panel-header:active { cursor: grabbing; }
+  .panel-title { font-weight: 600; font-size: 13.5px; }
+  .panel-meta { color: var(--faint); font-size: 11px; font-family: 'IBM Plex Mono', monospace; }
+
+  .panel-body { padding: 12px 14px; overflow: auto; flex: 1; }
+
+  /* ---------- Findings stream ---------- */
+  .row {
+    display: grid;
+    grid-template-columns: 84px 1fr 64px;
+    gap: 10px;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid #1E2530;
+    font-size: 12px;
+  }
+  .row:last-child { border-bottom: none; }
+  .row .type { color: var(--hi); font-weight: 500; }
+  .row .loc { color: var(--lo); font-family: 'IBM Plex Mono', monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sev-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    text-align: center;
+    border: 1px solid currentColor;
+  }
+  .sev-critical { color: var(--sev-critical); }
+  .sev-high { color: var(--sev-high); }
+  .sev-medium { color: var(--sev-medium); }
+  .sev-low { color: var(--sev-low); }
+
+  /* ---------- Severity mix ---------- */
+  .mix-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .mix-label { width: 64px; font-size: 12px; color: var(--lo); }
+  .mix-track { flex: 1; height: 8px; background: #1E2530; border-radius: 4px; overflow: hidden; }
+  .mix-fill { height: 100%; border-radius: 4px; }
+  .mix-count { width: 26px; text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--hi); }
+
+  /* ---------- Vault ledger ---------- */
+  .vault-item {
+    padding: 8px 0;
+    border-bottom: 1px solid #1E2530;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--lo);
+    line-height: 1.5;
+    word-break: break-all;
+  }
+  .vault-item:last-child { border-bottom: none; }
+  .vault-item .name { color: var(--hi); }
+
+  /* ---------- Audit trail ---------- */
+  .audit-item { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid #1E2530; font-size: 12px; }
+  .audit-item:last-child { border-bottom: none; }
+  .audit-time { color: var(--faint); font-family: 'IBM Plex Mono', monospace; font-size: 11px; width: 52px; flex: none; }
+  .audit-status { flex: none; }
+  .audit-status.ok { color: var(--ok); }
+  .audit-status.pending { color: var(--sev-medium); }
+  .audit-reason { color: var(--lo); font-size: 11.5px; }
+
+  /* ---------- AWS pulse ---------- */
+  .pulse-item { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #1E2530; font-size: 12.5px; }
+  .pulse-item:last-child { border-bottom: none; }
+  .pulse-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .pulse-dot.on { background: var(--ok); box-shadow: 0 0 0 3px rgba(78,156,147,0.16); }
+  .pulse-dot.warn { background: var(--sev-medium); box-shadow: 0 0 0 3px rgba(201,146,47,0.16); }
+  .pulse-dot.idle { background: var(--faint); }
+  .pulse-name { flex: 1; }
+  .pulse-note { color: var(--faint); font-size: 11px; font-family: 'IBM Plex Mono', monospace; }
+
+  .empty {
+    color: var(--faint);
+    font-size: 12.5px;
+    padding: 18px 0;
+    text-align: center;
+  }
+
+  .status-line {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--faint);
+    padding: 0 20px 10px;
+  }
+  .status-line.error { color: var(--sev-critical); }
+
+  @media (prefers-color-scheme: light) {
+    /* This is a monitoring wallboard by design — it stays dark regardless
+       of system theme, the way a real SOC display does. */
+  }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span class="brand-name">GuardRail</span>
+      <span class="brand-sub">live ops</span>
+    </div>
+
+    <span class="mode-pill demo" id="modePill">Demo mode</span>
+
+    <div class="spacer"></div>
+
+    <div class="field">
+      <label for="apiUrl">API</label>
+      <input id="apiUrl" type="text" placeholder="https://xxxx.execute-api.region.amazonaws.com/findings" />
+    </div>
+    <button id="connectBtn">Connect</button>
+    <button id="demoBtn" class="primary">Load demo data</button>
+    <button id="resetBtn" class="ghost">Reset layout</button>
+  </div>
+
+  <div class="status-line" id="statusLine"></div>
+
+  <div class="canvas-wrap">
+    <div class="canvas" id="canvas">
+
+      <div class="panel" id="p-findings" style="left:24px; top:16px; width:460px;">
+        <div class="panel-top amber"></div>
+        <div class="panel-header">
+          <span class="panel-title">Findings stream</span>
+          <span class="panel-meta" id="findingsMeta">0 total</span>
+        </div>
+        <div class="panel-body" id="findingsBody" style="max-height:340px;">
+          <div class="empty">No data loaded. Load demo data or connect to a live endpoint.</div>
+        </div>
+      </div>
+
+      <div class="panel" id="p-mix" style="left:520px; top:16px; width:300px;">
+        <div class="panel-top teal"></div>
+        <div class="panel-header">
+          <span class="panel-title">Severity mix</span>
+          <span class="panel-meta mono" id="mixMeta"></span>
+        </div>
+        <div class="panel-body" id="mixBody">
+          <div class="empty">—</div>
+        </div>
+      </div>
+
+      <div class="panel" id="p-pulse" style="left:856px; top:16px; width:300px;">
+        <div class="panel-top slate"></div>
+        <div class="panel-header">
+          <span class="panel-title">AWS pulse</span>
+          <span class="panel-meta">6 services</span>
+        </div>
+        <div class="panel-body" id="pulseBody"></div>
+      </div>
+
+      <div class="panel" id="p-vault" style="left:520px; top:280px; width:340px;">
+        <div class="panel-top amber"></div>
+        <div class="panel-header">
+          <span class="panel-title">Vault ledger</span>
+          <span class="panel-meta" id="vaultMeta">0 stored</span>
+        </div>
+        <div class="panel-body" id="vaultBody" style="max-height:260px;">
+          <div class="empty">Secrets Manager entries appear here once remediated.</div>
+        </div>
+      </div>
+
+      <div class="panel" id="p-audit" style="left:24px; top:392px; width:460px;">
+        <div class="panel-top teal"></div>
+        <div class="panel-header">
+          <span class="panel-title">Audit trail</span>
+          <span class="panel-meta" id="auditMeta">0 events</span>
+        </div>
+        <div class="panel-body" id="auditBody" style="max-height:300px;">
+          <div class="empty">DynamoDB rows appear here as the pipeline runs.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- Demo dataset: shaped exactly like what audit_log.py writes to
+  // DynamoDB, so switching to a live endpoint changes nothing else. ----
+  function buildDemoData() {
+    const now = Math.floor(Date.now() / 1000);
+    const raw = [
+      ["aws_access_key_id", "high", "demo/fixtures/leaked_aws_config.py", 8, "bedrock", true,
+       "Matches AWS access key ID format and is used inline in a boto3.Session call.", 40],
+      ["aws_secret_access_key", "high", "demo/fixtures/leaked_aws_config.py", 9, "bedrock", true,
+       "Paired with an access key ID two lines above — high confidence real credential.", 55],
+      ["db_connection_string", "critical", "demo/fixtures/leaked_aws_config.py", 13, "bedrock", true,
+       "Full connection string with embedded plaintext password to a prod-looking RDS host.", 70],
+      ["slack_token", "medium", "demo/fixtures/leaked_aws_config.py", 15, "heuristic", true,
+       "Slack bot token format, no surrounding context available for the heuristic engine.", 95],
+      ["private_key_block", "critical", "demo/fixtures/.env.leaked", 6, "bedrock", true,
+       "PEM private key header detected — treated as critical regardless of content.", 130],
+      ["generic_api_key", "medium", "demo/fixtures/.env.leaked", 2, "heuristic", true,
+       "Assigned to STRIPE_API_KEY with a live-looking prefix.", 150],
+      ["github_token", "high", "demo/fixtures/.env.leaked", 3, "bedrock", true,
+       "GitHub PAT format (ghp_) with full-length token body.", 168],
+      ["kube_client_key_data", "high", "demo/fixtures/kube-config.yaml", 11, "bedrock", true,
+       "Base64 client-key-data under a prod-cluster user block.", 210],
+      ["kube_bearer_token", "medium", "demo/fixtures/kube-config.yaml", 12, "heuristic", false,
+       "JWT-shaped token; false-positive likelihood above threshold, held for manual review.", 231],
+      ["high_entropy_string", "low", "demo/fixtures/.env.leaked", 4, "heuristic", true,
+       "No known vendor signature matched — flagged on Shannon entropy alone.", 260],
+    ];
+
+    return raw.map(([type, sev, file, line, engine, remediated, reason, ageSec]) => {
+      const fp = Math.random().toString(16).slice(2, 10) + Math.random().toString(16).slice(2, 10);
+      return {
+        fingerprint: fp,
+        detected_at: now - ageSec,
+        repo: "demo-org/demo-repo",
+        file_path: file,
+        line_no: line,
+        finding_type: type,
+        severity: sev,
+        false_positive_likelihood: engine === "heuristic" ? "0.2" : "0.05",
+        reason: reason,
+        triage_engine: engine,
+        vault_arn: remediated
+          ? `arn:aws:secretsmanager:ap-south-1:111122223333:secret:guardrail/quarantined/demo-org/demo-repo/${type}/${fp}`
+          : "not_stored",
+        remediated: remediated,
+      };
+    });
+  }
+
+  // ---- State ----
+  let items = [];
+
+  const els = {
+    modePill: document.getElementById("modePill"),
+    statusLine: document.getElementById("statusLine"),
+    apiUrl: document.getElementById("apiUrl"),
+    findingsBody: document.getElementById("findingsBody"),
+    findingsMeta: document.getElementById("findingsMeta"),
+    mixBody: document.getElementById("mixBody"),
+    mixMeta: document.getElementById("mixMeta"),
+    vaultBody: document.getElementById("vaultBody"),
+    vaultMeta: document.getElementById("vaultMeta"),
+    auditBody: document.getElementById("auditBody"),
+    auditMeta: document.getElementById("auditMeta"),
+    pulseBody: document.getElementById("pulseBody"),
+  };
+
+  function timeAgo(epochSec) {
+    const diff = Math.max(0, Math.floor(Date.now() / 1000) - epochSec);
+    if (diff < 60) return diff + "s";
+    if (diff < 3600) return Math.floor(diff / 60) + "m";
+    return Math.floor(diff / 3600) + "h";
+  }
+
+  function render() {
+    renderFindings();
+    renderMix();
+    renderVault();
+    renderAudit();
+    renderPulse();
+  }
+
+  function renderFindings() {
+    els.findingsMeta.textContent = items.length + " total";
+    if (!items.length) {
+      els.findingsBody.innerHTML = '<div class="empty">No data loaded. Load demo data or connect to a live endpoint.</div>';
+      return;
+    }
+    const sorted = [...items].sort((a, b) => b.detected_at - a.detected_at);
+    els.findingsBody.innerHTML = sorted.map(f => `
+      <div class="row">
+        <span class="sev-badge sev-${f.severity}">${f.severity}</span>
+        <span>
+          <div class="type">${f.finding_type.replace(/_/g, " ")}</div>
+          <div class="loc">${f.file_path}:${f.line_no}</div>
+        </span>
+        <span class="loc" style="text-align:right;">${timeAgo(f.detected_at)} ago</span>
+      </div>
+    `).join("");
+  }
+
+  function renderMix() {
+    const order = ["critical", "high", "medium", "low"];
+    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    items.forEach(f => { if (counts[f.severity] !== undefined) counts[f.severity]++; });
+    const max = Math.max(1, ...order.map(k => counts[k]));
+    els.mixMeta.textContent = items.length ? `${items.length} findings` : "";
+    if (!items.length) {
+      els.mixBody.innerHTML = '<div class="empty">—</div>';
+      return;
+    }
+    els.mixBody.innerHTML = order.map(k => `
+      <div class="mix-row">
+        <span class="mix-label">${k}</span>
+        <span class="mix-track"><span class="mix-fill" style="width:${(counts[k]/max*100).toFixed(0)}%; background:var(--sev-${k});"></span></span>
+        <span class="mix-count">${counts[k]}</span>
+      </div>
+    `).join("");
+  }
+
+  function renderVault() {
+    const vaulted = items.filter(f => f.remediated && f.vault_arn && f.vault_arn !== "not_stored");
+    els.vaultMeta.textContent = vaulted.length + " stored";
+    if (!vaulted.length) {
+      els.vaultBody.innerHTML = '<div class="empty">Secrets Manager entries appear here once remediated.</div>';
+      return;
+    }
+    els.vaultBody.innerHTML = vaulted.map(f => `
+      <div class="vault-item">
+        <div class="name">${f.finding_type}/${f.fingerprint}</div>
+        <div>${f.vault_arn}</div>
+      </div>
+    `).join("");
+  }
+
+  function renderAudit() {
+    els.auditMeta.textContent = items.length + " events";
+    if (!items.length) {
+      els.auditBody.innerHTML = '<div class="empty">DynamoDB rows appear here as the pipeline runs.</div>';
+      return;
+    }
+    const sorted = [...items].sort((a, b) => b.detected_at - a.detected_at);
+    els.auditBody.innerHTML = sorted.map(f => `
+      <div class="audit-item">
+        <span class="audit-time">${timeAgo(f.detected_at)}</span>
+        <span class="audit-status ${f.remediated ? 'ok' : 'pending'}">${f.remediated ? '✓ remediated' : '… held'}</span>
+        <span class="audit-reason">${f.reason || ''}</span>
+      </div>
+    `).join("");
+  }
+
+  function renderPulse() {
+    const usedBedrock = items.some(f => f.triage_engine === "bedrock");
+    const anyRemediated = items.some(f => f.remediated);
+    const services = [
+      ["Lambda + API Gateway", items.length ? "on" : "idle", items.length ? "receiving pushes" : "no traffic yet"],
+      ["Bedrock triage", usedBedrock ? "on" : "warn", usedBedrock ? "live verdicts" : "heuristic fallback"],
+      ["Secrets Manager", anyRemediated ? "on" : "idle", anyRemediated ? "vaulting" : "no writes yet"],
+      ["DynamoDB", items.length ? "on" : "idle", items.length ? items.length + " rows" : "empty"],
+      ["SNS", items.some(f => f.severity === "high" || f.severity === "critical") ? "on" : "idle", "alert topic"],
+      ["EventBridge", items.length ? "on" : "idle", "default bus"],
+    ];
+    els.pulseBody.innerHTML = services.map(([name, state, note]) => `
+      <div class="pulse-item">
+        <span class="pulse-dot ${state}"></span>
+        <span class="pulse-name">${name}</span>
+        <span class="pulse-note">${note}</span>
+      </div>
+    `).join("");
+  }
+
+  function setStatus(msg, isError) {
+    els.statusLine.textContent = msg || "";
+    els.statusLine.classList.toggle("error", !!isError);
+  }
+
+  document.getElementById("demoBtn").addEventListener("click", function () {
+    items = buildDemoData();
+    els.modePill.textContent = "Demo mode";
+    els.modePill.className = "mode-pill demo";
+    setStatus("Loaded " + items.length + " fixture findings.");
+    render();
+  });
+
+  document.getElementById("connectBtn").addEventListener("click", function () {
+    const url = els.apiUrl.value.trim();
+    if (!url) { setStatus("Paste your findings_api_url output from terraform apply first.", true); return; }
+    setStatus("Connecting to " + url + " …");
+    fetch(url)
+      .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(data => {
+        items = Array.isArray(data) ? data : [];
+        els.modePill.textContent = "Live";
+        els.modePill.className = "mode-pill live";
+        setStatus(items.length + " rows loaded from " + url);
+        render();
+      })
+      .catch(err => {
+        setStatus("Could not reach the API (" + err.message + "). If you're viewing this inside a hosted preview, " +
+                   "open this file directly or deploy it (e.g. S3 static hosting) — hosted previews block requests " +
+                   "to arbitrary endpoints.", true);
+      });
+  });
+
+  // ---- Drag to reposition ----
+  const defaultLayout = {};
+  document.querySelectorAll(".panel").forEach(p => {
+    defaultLayout[p.id] = { left: p.style.left, top: p.style.top };
+  });
+
+  let dragTarget = null, offsetX = 0, offsetY = 0;
+
+  document.querySelectorAll(".panel-header").forEach(header => {
+    header.addEventListener("pointerdown", function (e) {
+      const panel = header.closest(".panel");
+      dragTarget = panel;
+      const rect = panel.getBoundingClientRect();
+      const canvasRect = document.getElementById("canvas").getBoundingClientRect();
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
+      panel.classList.add("dragging");
+      header.setPointerCapture(e.pointerId);
+    });
+  });
+
+  document.addEventListener("pointermove", function (e) {
+    if (!dragTarget) return;
+    const canvas = document.getElementById("canvas");
+    const canvasRect = canvas.getBoundingClientRect();
+    let left = e.clientX - canvasRect.left - offsetX + canvas.parentElement.scrollLeft;
+    let top = e.clientY - canvasRect.top - offsetY + canvas.parentElement.scrollTop;
+    left = Math.max(0, left);
+    top = Math.max(0, top);
+    dragTarget.style.left = left + "px";
+    dragTarget.style.top = top + "px";
+  });
+
+  document.addEventListener("pointerup", function () {
+    if (dragTarget) dragTarget.classList.remove("dragging");
+    dragTarget = null;
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", function () {
+    Object.entries(defaultLayout).forEach(([id, pos]) => {
+      const el = document.getElementById(id);
+      el.style.left = pos.left;
+      el.style.top = pos.top;
+    });
+    setStatus("Layout reset.");
+  });
+
+  // Initial paint (empty state)
+  render();
+})();
+</script>
+</body>
+</html>

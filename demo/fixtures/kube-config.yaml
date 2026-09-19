@@ -1,0 +1,12 @@
+# demo fixture only — fake kubeconfig, not a real cluster
+apiVersion: v1
+kind: Config
+clusters:
+  - name: prod-cluster
+    cluster:
+      server: https://example-eks-cluster.ap-south-1.eks.amazonaws.com
+users:
+  - name: prod-admin
+    user:
+      client-key-data: LS0tLS1CRUdJTiBFWEFNUExFIEZBS0UgS0VZLS0tLS1mYWtlZGF0YWZvcmRlbW8tLS0tLQ==
+      token: eyJhbGciOiJSUzI1NiIsImV4YW1wbGUiOiJmYWtlIn0.EXAMPLEFAKEJWTFORDEMOONLY.notarealtoken
