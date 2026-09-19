@@ -4,11 +4,6 @@ An AWS-native pipeline that detects, triages, masks, and vaults hardcoded
 secrets within seconds of a `git push` — instead of just flagging them
 and leaving a human to clean up.
 
-Built for WeMakeDevs × AWS **First Commit** (Bharat Builds Tour, Sept
-17–20, 2026). See `docs/BUSINESS_REQUIREMENTS.md` for how this repo maps
-to the official rules, `docs/WRITEUP.md` for the submission writeup, and
-`docs/DEMO_SCRIPT.md` for the 3-minute video script.
-
 ## Why
 
 Existing tools (Gitleaks, TruffleHog, detect-secrets, GitHub Push
